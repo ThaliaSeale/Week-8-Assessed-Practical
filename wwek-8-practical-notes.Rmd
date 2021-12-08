@@ -1,0 +1,643 @@
+---
+title: "Week 8 GLM Practical Notes"
+output:
+  pdf_document: 
+    keep_tex: yes
+  html_notebook: default
+---
+
+```{r setup}
+library(tidyverse)
+
+library(MASS)
+
+library(GGally)
+library(patchwork)
+
+library(rsq)
+
+pub <- read.csv("Data/pub.csv")
+# Setting female and married as factors
+pub <- pub %>%
+  mutate(across(2:3, as.factor))
+```
+
+# Exploratory analysis
+
+## Summary
+
+First, a basic summary of the data. We look for any possible indication of data errors.
+
+```{r}
+summary(pub)
+```
+
+```{r, include=FALSE}
+write.csv(summary(pub),"Data/pub_summary.csv",
+          quote = F,
+          na = "")
+```
+
+
+There are some values that appear to be quite high for mentor and articles, but when we look at the overall distribution we see that it is very skewed and so these values are probably not a cause for concern at the moment.
+
+
+```{r articles_mentor_histogram}
+articles_histogram <- pub %>%
+  ggplot(aes(x = articles)) +
+  geom_histogram() +
+  theme_bw() +
+  labs(title = "Distributution of Number of Articles Published",
+       x = "Articles",
+       y = "Count")
+
+mentor_histogram<- pub %>%
+  ggplot(aes(x = mentor)) +
+  geom_histogram() +
+  theme_bw() +
+  labs(title = "Distributution of Number of Articles Published by Mentor",
+       x = "Articles",
+       y = "Count")
+
+articles_histogram / mentor_histogram
+```
+
+## Pairs plot
+
+A quick look at all the possible associations between the variables:
+
+```{r, pairs_plot}
+pairs(pub)
+```
+
+There seems to be more articles/wider spread for males than females. More articles for married than unmarried. Fewer kids more articles.There seems to be some positive relationship between prestige and articles but not extremely strong. The relationship between mentor and articles is somewhat unclear.
+
+There are obvious relationships between some of the explanatory variables. Marriage means higher numbers of kids.The prestige of the program is positively correlated with the output of the mentor. 
+
+## Boxplots
+
+```{r female_boxpot}
+female_boxplot <- pub %>%
+  # Changing the labelling of the factors for the plot
+  mutate(female = ifelse(female == 0, "male", "female")) %>%
+  ggplot() +
+  geom_boxplot(aes(x = female, y = articles)) +
+  theme_bw() +
+  labs(title = "Male/Female",
+       x = "Gender",
+       y = "Articles Published")
+
+female_boxplot
+```
+
+We see that the median number of publications is similar for men and women but that there is a larger dispersion for the number of articles produced by men.
+
+```{r female_summary}
+mean_articles_f <- pub %>%
+  group_by(female) %>%
+  summarise(mean = mean(articles)) %>%
+  mutate(mean = signif(mean,3))
+mean_articles_f
+```
+
+```{r, include=FALSE}
+write.table(mean_articles_f,"mean_articles_f.text",
+          quote = F,
+          row.names = F)
+```
+
+The mean number of articles is lower for women however.
+
+```{r married_boxplot}
+married_boxplot <- pub %>%
+  # Changing the labelling of the factors for the plot:
+  mutate(married = ifelse(married == 1,"married","unmarried")) %>%
+  ggplot() +
+  geom_boxplot(aes(x = married, y = articles)) +
+  theme_bw() +
+  labs(title = "Married/Unmarried",
+       x = "Marriage Status",
+       y = "Articles Published")
+
+married_boxplot
+```
+
+Larger spread for people who are married but again similar median.
+
+```{r married_summary}
+mean_articles_married <- pub %>%
+  group_by(married) %>%
+  summarise(mean = mean(articles)) %>%
+  mutate(mean = signif(mean,3))
+
+mean_articles_married
+```
+
+
+```{r, include= FALSE}
+write.table(mean_articles_married,"mean_articles_married.text",
+          quote = F,
+          row.names = F)
+```
+
+
+Married people have a higher mean output, but the difference is smaller.
+
+```{r kids_boxplot}
+kids_boxplot <- pub %>%
+  ggplot() +
+  geom_boxplot(aes(x = as.factor(kids), y = articles)) +
+  theme_bw() +
+  labs(title = "Kids Under 6 Years Old",
+       x = "Number of Kids",
+       y = "Articles Published")
+
+kids_boxplot
+```
+
+Larger spread of articles for individuals with fewer children.
+
+```{r kids_summary}
+mean_articles_kids <- pub %>%
+  group_by(kids) %>%
+  summarise(mean = mean(articles)) %>%
+  mutate(mean = signif(mean,3))
+
+mean_articles_kids
+```
+
+```{r, include = FALSE}
+write.table(mean_articles_kids,"mean_articles_kids.text",
+          quote = F,
+          row.names = F)
+```
+
+
+```{r boxplots}
+(female_boxplot + married_boxplot) / kids_boxplot +
+  plot_annotation(
+    title = "Comparison Over Factor Levels of Articles Published"
+  )
+```
+
+Highest output from individuals with one child, then the number of articles drops off. Since the relationship between number of kids and articles is not monotonic, it is probably best to treat the number of children as a factor.
+
+```{r}
+pub$kids <- as.factor(pub$kids)
+```
+
+```{r prestige_points}
+prestige_points <- pub %>%
+  ggplot(aes(x = prestige, y = articles)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  theme_bw() +
+  labs(title = "Number of Articles Published vs Prestige",
+       x = "Prestige", y = "Articles Published")
+
+prestige_points
+```
+
+```{r prestige_colplot}
+prestige_colplot <- pub %>%
+  # Binning prestige into increments of 0.5 points
+  mutate(prestige = floor(prestige*2)/2 + 0.25) %>%
+  group_by(prestige) %>%
+  summarise(mean = mean(articles)) %>%
+  ggplot(aes(x = prestige, y = mean)) +
+  geom_col() +
+  theme_bw() +
+  labs(title = "Mean Number of Articles Published vs Prestige",
+       x = "Prestige", y = "Mean Articles Published")
+
+prestige_colplot
+```
+
+```{r prestige_plots}
+prestige_points / prestige_colplot
+```
+
+Grouping prestige into 0.5 unit increments and taking the mean we see that the mean number of publications seems to increase slightly with prestige.
+
+```{r mentor_points}
+mentor_points <- pub %>%
+  ggplot(aes(x = mentor, y = articles)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  theme_bw() +
+  labs(title = "Number of Articles Published by Mentor vs Number of Articles Published",
+       x = "Articles Published by Mentor", y = "Articles Published")
+mentor_points
+```
+
+
+```{r mentor_colplot}
+mentor_colplot <- pub %>%
+  mutate(mentor = floor(mentor/10)*10 + 5) %>%
+  group_by(mentor) %>%
+  summarise(mean = mean(articles)) %>%
+  ggplot(aes(x = mentor, y = mean)) +
+  geom_col() +
+  theme_bw() +
+  labs(title = "Number of Articles Published by Mentor vs Mean Number of Articles Published",
+       x = "Articles Published by Mentor", y = "Articles Published")
+mentor_colplot
+```
+
+```{r mentor_plots}
+mentor_points / mentor_colplot
+```
+
+Grouping the number of articles published by mentors into intervals of 10 articles, there appears to be some positive relationship between the mean number of articles produced by PhD candidates and output of their mentors but the relationship is not particularly clear. There is also very sparse data at the end of the series.
+
+```{r}
+pub %>%
+  ggplot(aes(x = mentor)) +
+  geom_histogram()
+```
+
+# Model Fitting
+
+```{r}
+pub.glm <- glm(articles ~ 1 + female + married + kids + prestige + mentor +
+                 female*(married + kids + prestige + mentor),
+               data = pub,
+               family = poisson)
+
+summary(pub.glm)
+```
+
+Being female significant negative effect, as expected. Being married has a slight positive effect but it is not statistically significant; although it looked on the exploratory plots that there might be a difference, the means were quite similar so this seems to make sense.
+Having children has a statistically significant negative effect, as we would expect given the plots. Somewhat surprisingly, prestige does not have a statistically significant effect in the model, but the output of the mentor has a slight positive effect.
+
+None of the interactions appear significant apart from female1:prestige which has a slight positive effect. 
+
+```{r, include = FALSE}
+sink(file = "pub_glm_summary.text")
+summary(pub.glm)
+sink(file = NULL)
+```
+
+
+## AIC model selection
+
+```{r forward_selection}
+# Null model
+pub.glm.null <- glm(articles ~ 1,
+               data = pub,
+               family = poisson)
+
+stepAIC(pub.glm.null,
+        scope = list(lower = pub.glm.null, upper = pub.glm),
+        data = pub,
+        direction = "forward")
+```
+
+```{r, include = FALSE}
+#Saving AIC score
+write.table(
+  round(AIC(glm(articles ~ 1 + female + married + kids + mentor,
+               data = pub,
+               family = poisson)),1),
+  file = "AIC_score_forward_selection.text",
+  row.names = F
+)
+```
+
+
+Using forward selection we get the formula: articles ~ mentor + female + kids + married.
+
+```{r backward_selection}
+stepAIC(pub.glm,
+        scope = list(lower = pub.glm.null, upper = pub.glm),
+        data = pub,
+        direction = "backward")
+```
+
+Using backward selection, the formula selected is:
+
+articles ~ female + married + kids + prestige + 
+    mentor + female:prestige.
+    
+```{r, include = FALSE}
+#Saving AIC score
+write.table(
+  round(AIC(glm(formula = articles ~ female + married + kids + prestige + 
+    mentor + female:prestige, family = poisson, data = pub)),1),
+  file = "AIC_score_backward_selection.text",
+  row.names = F
+)
+```
+    
+    
+```{r stepwise_selection}
+stepAIC(pub.glm.null,
+        scope = list(lower = pub.glm.null, upper = pub.glm),
+        data = pub,
+        direction = "both")
+```
+    
+So the question, how do we select between these models?
+
+Test for inclusion of prestige
+
+```{r hypothesis_test 1}
+pub.glm.noprestige <- glm(articles ~ 1 + female + married + kids + mentor,
+               data = pub,
+               family = poisson)
+pub.glm.prestige <- glm(articles ~ 1 + female + married + kids + mentor + prestige,
+               data = pub,
+               family = poisson)
+dof <- pub.glm.prestige$rank - pub.glm.noprestige$rank
+lrt <- deviance (pub.glm.noprestige) - deviance(pub.glm.prestige)
+pval <- 1 - pchisq(lrt,dof)
+cbind(lrt,dof,pval)
+```
+```{r, include = FALSE}
+write.table(
+  signif(cbind(lrt,dof,pval),3),
+  file = "hypothesis_test1.text",
+  row.names = F
+)
+```
+
+Just including prestige is not significant.
+
+```{r hypothesis_test 2}
+pub.glm.noprestige <- glm(articles ~ 1 + female + married + kids + mentor,
+               data = pub,
+               family = poisson)
+pub.glm.prestige <- glm(articles ~ 1 + female + married + kids + mentor + prestige + female*prestige,
+               data = pub,
+               family = poisson)
+dof <- pub.glm.prestige$rank - pub.glm.noprestige$rank
+lrt <- deviance (pub.glm.noprestige) - deviance(pub.glm.prestige)
+pval <- 1 - pchisq(lrt,dof)
+cbind(lrt,dof,pval)
+```
+The hypothesis test suggests that there is a significant effect for including both prestige and female at the 10% significance level.
+
+Let us include the prestige and female*prestige term since it has a borderline significant effect which we may want to examine in our analysis.
+
+```{r, include = FALSE}
+write.table(
+  signif(cbind(lrt,dof,pval),3),
+  file = "hypothesis_test2.text",
+  row.names = F
+)
+```
+
+Marriage may not be significant, so let us test for it:
+
+```{r hypothesis_test 3}
+pub.glm.nomarriage <- glm(articles ~ 1 + female + kids + mentor,
+               data = pub,
+               family = poisson)
+pub.glm.marriage <- glm(articles ~ 1 + female + married + kids + mentor,
+               data = pub,
+               family = poisson)
+dof <- pub.glm.marriage$rank - pub.glm.nomarriage$rank
+lrt <- deviance (pub.glm.nomarriage) - deviance(pub.glm.marriage)
+pval <- 1 - pchisq(lrt,dof)
+cbind(lrt,dof,pval)
+```
+```{r, include = FALSE}
+write.table(
+  signif(cbind(lrt,dof,pval),3),
+  file = "hypothesis_test3.text",
+  row.names = F
+)
+```
+
+Final model:
+
+```{r final model}
+pub.glm.selected <- glm(articles ~ 1 + female + married + kids + mentor + prestige + female*prestige,
+               data = pub,
+               family = poisson)
+```
+
+## Diagnostics
+
+Here are the diagnostic plots for the model: standardised residuals, leverage and Cook's distances.
+
+```{r diagnostic_plots }
+# Number of coefficients in the model
+p <- pub.glm.selected$rank
+# Number of observations
+n <- nrow(model.frame(pub.glm.selected))
+
+r_standard_plot <- data.frame(fitted_values = fitted(pub.glm.selected),
+           r_standard = rstandard(pub.glm.selected)) %>%
+  ggplot(aes(x = fitted_values, y = r_standard)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Fitted Values", y = "Standardised Residuals")
+
+influence_plot <- data.frame(influence = influence(pub.glm.selected)$hat/(p/n),
+           index = 1:length(influence(pub.glm.selected)$hat))  %>%
+  ggplot(aes(x = index, y = influence)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Index", y = "Leverage/(p/n)")
+
+cooks_bound <-  8 / (n - 2 * p)
+
+cooks_distance_plot <- data.frame(cooks_distance = cooks.distance(pub.glm.selected),
+                                  index = 1:n) %>%
+  # Select slightly below the bound to be influential outliers in the plot too
+  mutate(influential_outlier = cooks_distance >= cooks_bound - 0.001) %>%
+  ggplot() +
+  geom_point(aes(x = index, y = cooks_distance, colour = influential_outlier)) +
+  geom_hline(aes(yintercept = cooks_bound), colour = "#C77CFF") +
+  geom_text(aes( x = 10, y = cooks_bound, label = "8/(n - 2p)", vjust = -0.5),
+            size = 3, colour = "#C77CFF") +
+  theme_bw() +
+  scale_colour_manual(name = "Influential Outlier", values = c("#00BFC4","#F8766D")) +
+  labs(x = "Index", y = "Cook's Distance")
+
+(r_standard_plot + influence_plot) / cooks_distance_plot +
+  plot_annotation(
+    title = "Diagnostic Plots for the Selected Model"
+  )
+```
+
+If we remove the "influential outliers", this causes some changes to the analysis:
+
+```{r}
+# These are the indices of the points which are above the bound for Cook's distance
+which(cooks.distance(pub.glm.selected) > 8/(n-2*p))
+# Removing influential outliers and performing analysis again
+
+pub2 <- pub %>%
+  slice(which(cooks.distance(pub.glm.selected) < 8/(n-2*p)))
+
+# New analysis of the data
+pub.glm2 <- glm(articles ~ 1 + female + married + kids + prestige + mentor +
+                 female*(married + kids + prestige + mentor),
+                 data = pub2,
+                 family = poisson)
+pub.glm2
+```
+
+```{r, include = FALSE}
+write.table(
+  length(which(cooks.distance(pub.glm.selected) > 8/(n-2*p))),
+  file = "number_influential_outliers.text",
+  row.names = F
+)
+
+sink(file = "pub_glm2_summary.text")
+summary(pub.glm2)
+sink(file = NULL)
+```
+
+
+Looking to see if there is any difference in automatic model selection:
+
+```{r}
+# Null model for this data
+pub.glm2.null <- glm(articles ~ 1,
+               data = pub2,
+               family = poisson)
+
+stepAIC(pub.glm2.null,
+        scope = list(lower = pub.glm2.null, upper = pub.glm2),
+        data = pub2,
+        direction = "forward")
+
+stepAIC(pub.glm2,
+        scope = list(lower = pub.glm2.null, upper = pub.glm2),
+        data = pub2,
+        direction = "backward")
+```
+I do not think that there is a good justification for removing influential outliers from the analysis. I cannot think of a good reason that the information would be incorrectly recorded other than a few minor counting errors.
+
+# Model quality
+
+This is a Poisson model so a goodness of fit test can be appropriate, however the counts are quite small. The deviance is given by $D(y) \sim \chi^2(n - p)$ under $\mathcal{H}_0$. Here $n = $ `r dim(pub)[1]` and $p = $ `r pub.glm.prestige$rank`
+
+```{r GoF}
+# Goodness of fit for the model without outliers excluded
+deviance(pub.glm.prestige)
+dim(pub)[1] - pub.glm.prestige$rank
+qchisq(0.95,dim(pub)[1] - pub.glm.prestige$rank)
+
+# Goodness of fit for the model with outliers excluded
+deviance(pub.glm2)
+dim(pub2)[1] - pub.glm2$rank
+qchisq(0.95,dim(pub2)[1] - pub.glm2$rank)
+```
+
+```{r, include = FALSE}
+#saving values
+write.table(
+  round(c(deviance(pub.glm.prestige),
+           deviance(pub.glm2),
+           qchisq(0.95,dim(pub)[1] - pub.glm.prestige$rank),
+           qchisq(0.95,dim(pub)[1] - pub.glm2$rank)),1),
+  file = "GoF.text",
+  row.names = F
+)
+```
+
+
+This is not a good fit. With outliers removed it is still not a good fit.
+
+Here we are looking at the $R_{KL}^2$ value:
+
+```{r}
+rsq(pub.glm.selected,type = "kl")
+rsq(pub.glm2,type = "kl")
+
+```
+
+Without removing the data the $R^2_{KL}$ is better for the first model. It is quite close to 0, so the model really does not capture a lot of the variation in the data.
+
+```{r, include = FALSE}
+write.table(
+  signif(c(rsq(pub.glm.selected,type = "kl"),
+           rsq(pub.glm2,type = "kl")),3),
+  file = "RKL2.text",
+  row.names = F
+)
+```
+
+# Interpretation
+
+Confidence intervals at 95% level:
+
+```{r}
+coefs <- summary(pub.glm.selected)$coef[2:pub.glm.selected$rank,1]
+SEs <- summary(pub.glm.selected)$coef[2:pub.glm.selected$rank,2]
+cval <- qnorm(0.975)
+
+CI <- data.frame(
+  estimate = coefs,
+  lower = coefs - cval * SEs,
+  upper = coefs + cval * SEs
+)
+# Transforming the confidence intervals to find the multiplicative factors
+CI <- CI %>%
+  mutate(exp_estimate = exp(estimate),
+         exp_lower = exp(lower),
+         exp_upper = exp(upper))
+CI <- signif(CI,3)
+CI$rownames <- rownames(CI)
+
+CI
+```
+
+```{r, include = FALSE}
+write.csv(CI,"Data/CI.csv",
+          quote = F,
+          na = "")
+```
+
+
+# Estimating $\phi$
+
+Estimate for $\hat{phi}$:
+
+```{r}
+phi_hat <- 1/(dim(pub)[1] - pub.glm.prestige$rank) *
+  sum((pub$articles - pub.glm.selected$fitted.values)^2/pub.glm.selected$fitted.values)
+```
+
+```{r, include = FALSE}
+write.table(
+  signif(phi_hat,3),
+  file = "phi_hat.text",
+  row.names = F
+)
+```
+
+
+The data is actually overdispersed. This implies that the standard errors were too small and that the CI's were too narrow. We can adjust the estimated variances by multiplying by a factor of $\hat{\phi}$, giving the following confidence intervals:
+
+```{r}
+coefs <- summary(pub.glm.selected)$coef[2:pub.glm.selected$rank,1]
+SEs <- summary(pub.glm.selected)$coef[2:pub.glm.selected$rank,2]*phi_hat^(1/2)
+cval <- qnorm(0.975)
+
+CI <- data.frame(
+  estimate = coefs,
+  lower = coefs - cval * SEs,
+  upper = coefs + cval * SEs
+)
+CI <- CI %>%
+  mutate(exp_estimate = exp(estimate),
+         exp_lower = exp(lower),
+         exp_upper = exp(upper))
+CI <- signif(CI,3)
+CI$rownames <- rownames(CI)
+
+CI
+```
+
+This has some implications for the results of our analysis.
+
+```{r, include = FALSE}
+write.csv(CI,"Data/CIphi.csv",
+          quote = F,
+          na = "")
+```
+
