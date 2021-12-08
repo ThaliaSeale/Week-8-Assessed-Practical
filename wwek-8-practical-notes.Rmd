@@ -47,7 +47,7 @@ articles_histogram <- pub %>%
   ggplot(aes(x = articles)) +
   geom_histogram() +
   theme_bw() +
-  labs(title = "Distributution of Number of Articles Published",
+  labs(title = "Distribution of Number of Articles Published",
        x = "Articles",
        y = "Count")
 
@@ -55,7 +55,7 @@ mentor_histogram<- pub %>%
   ggplot(aes(x = mentor)) +
   geom_histogram() +
   theme_bw() +
-  labs(title = "Distributution of Number of Articles Published by Mentor",
+  labs(title = "Distribution of Number of Articles Published by Mentor",
        x = "Articles",
        y = "Count")
 
@@ -206,7 +206,8 @@ prestige_colplot <- pub %>%
   ggplot(aes(x = prestige, y = mean)) +
   geom_col() +
   theme_bw() +
-  labs(title = "Mean Number of Articles Published vs Prestige",
+  labs(title = "Mean Number of Articles Published
+       vs Prestige",
        x = "Prestige", y = "Mean Articles Published")
 
 prestige_colplot
@@ -223,7 +224,8 @@ mentor_points <- pub %>%
   ggplot(aes(x = mentor, y = articles)) +
   geom_point(alpha = 0.5, color = "blue") +
   theme_bw() +
-  labs(title = "Number of Articles Published by Mentor vs Number of Articles Published",
+  labs(title = "Number of Articles Published
+       vs Number of Articles Published by Mentor",
        x = "Articles Published by Mentor", y = "Articles Published")
 mentor_points
 ```
@@ -237,7 +239,8 @@ mentor_colplot <- pub %>%
   ggplot(aes(x = mentor, y = mean)) +
   geom_col() +
   theme_bw() +
-  labs(title = "Number of Articles Published by Mentor vs Mean Number of Articles Published",
+  labs(title = "Mean Number of Articles vs
+       Number of Articles Published by Mentor",
        x = "Articles Published by Mentor", y = "Articles Published")
 mentor_colplot
 ```
@@ -365,7 +368,8 @@ Just including prestige is not significant.
 pub.glm.noprestige <- glm(articles ~ 1 + female + married + kids + mentor,
                data = pub,
                family = poisson)
-pub.glm.prestige <- glm(articles ~ 1 + female + married + kids + mentor + prestige + female*prestige,
+pub.glm.prestige <- glm(articles ~ 1 + female + married + kids + mentor + prestige
+                        + female*prestige,
                data = pub,
                family = poisson)
 dof <- pub.glm.prestige$rank - pub.glm.noprestige$rank
@@ -410,7 +414,8 @@ write.table(
 Final model:
 
 ```{r final model}
-pub.glm.selected <- glm(articles ~ 1 + female + married + kids + mentor + prestige + female*prestige,
+pub.glm.selected <- glm(articles ~ 1 + female + married + kids + mentor + prestige
+                        + female*prestige,
                data = pub,
                family = poisson)
 ```
